@@ -1,0 +1,253 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===========================================
+   ConformLoi96 - Styles globaux
+   =========================================== */
+
+@layer base {
+  :root {
+    /* Fond clair - thème principal */
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+
+    /* Carte */
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    /* Popover */
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Couleur primaire - Bleu Québec */
+    --primary: 220 100% 32%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Couleur secondaire */
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    /* Tons atténués */
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    /* Accent */
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    /* Destructif (erreurs) */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Bordures et inputs */
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 220 100% 32%;
+
+    /* Rayon des bordures */
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    /* Mode sombre */
+    --background: 222 47% 6%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 8%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 8%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 6%;
+
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 217 91% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
+  }
+
+  /* Scrollbar personnalisée */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-muted rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full hover:bg-muted-foreground/50;
+  }
+
+  /* Focus visible amélioré pour accessibilité */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Sélection de texte */
+  ::selection {
+    @apply bg-primary/20 text-primary;
+  }
+}
+
+@layer components {
+  /* Conteneur principal */
+  .container-app {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  /* Effets de verre (glassmorphism) */
+  .glass {
+    @apply bg-white/80 backdrop-blur-lg border border-white/20;
+  }
+
+  .glass-dark {
+    @apply bg-black/40 backdrop-blur-lg border border-white/10;
+  }
+
+  /* Gradient de fond héro */
+  .hero-gradient {
+    background: linear-gradient(
+      135deg,
+      hsl(220 100% 32%) 0%,
+      hsl(220 100% 40%) 50%,
+      hsl(220 100% 32%) 100%
+    );
+  }
+
+  /* Animation de chargement shimmer */
+  .shimmer {
+    @apply animate-shimmer bg-gradient-to-r from-transparent via-white/20 to-transparent bg-[length:200%_100%];
+  }
+
+  /* Badge de statut */
+  .status-badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .status-badge-success {
+    @apply status-badge bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400;
+  }
+
+  .status-badge-warning {
+    @apply status-badge bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400;
+  }
+
+  .status-badge-error {
+    @apply status-badge bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400;
+  }
+
+  .status-badge-info {
+    @apply status-badge bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400;
+  }
+
+  /* Carte interactive */
+  .card-interactive {
+    @apply transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer;
+  }
+
+  /* Zone de drop pour fichiers */
+  .dropzone {
+    @apply border-2 border-dashed border-muted-foreground/25 rounded-xl p-8 text-center transition-all duration-200;
+  }
+
+  .dropzone-active {
+    @apply border-primary bg-primary/5 scale-[1.02];
+  }
+
+  /* Checklist item */
+  .checklist-item {
+    @apply flex items-start gap-3 p-4 rounded-lg border bg-card transition-colors;
+  }
+
+  .checklist-item-error {
+    @apply checklist-item border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-900/10;
+  }
+
+  .checklist-item-success {
+    @apply checklist-item border-green-200 bg-green-50 dark:border-green-900/50 dark:bg-green-900/10;
+  }
+
+  /* Animation d'entrée */
+  .animate-in-up {
+    @apply animate-fade-in;
+    animation-delay: calc(var(--index, 0) * 100ms);
+  }
+}
+
+@layer utilities {
+  /* Texte avec gradient */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-600;
+  }
+
+  /* Masquage de contenu (pour slider) */
+  .mask-fade-right {
+    mask-image: linear-gradient(to right, black 80%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
+  }
+
+  /* Espacement de prose */
+  .prose-spacing > * + * {
+    @apply mt-4;
+  }
+
+  /* Balance du texte */
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Animations personnalisées */
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    @apply bg-white text-black;
+  }
+}

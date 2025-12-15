@@ -1,0 +1,152 @@
+// ===========================================
+// Schéma Prisma pour ConformLoi96
+// ===========================================
+// Base de données PostgreSQL via Prisma Accelerate
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+// ===========================================
+// Modèle Utilisateur
+// ===========================================
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  avatarUrl     String?
+  
+  // Abonnement Lemon Squeezy
+  plan                      Plan      @default(FREE)
+  lemonSqueezyCustomerId    String?   @unique
+  lemonSqueezySubscriptionId String?  @unique
+  subscriptionStatus        String?   // active, cancelled, past_due, etc.
+  currentPeriodEnd          DateTime?
+  
+  // Compteurs (free checks par mois)
+  freeChecksUsed      Int      @default(0)
+  freeChecksResetAt   DateTime @default(now())
+  
+  // Relations
+  documents     Document[]
+  analyses      Analysis[]
+  
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([email])
+  @@index([lemonSqueezyCustomerId])
+}
+
+// ===========================================
+// Plans d'abonnement
+// ===========================================
+enum Plan {
+  FREE
+  PRO
+}
+
+// ===========================================
+// Modèle Document
+// ===========================================
+model Document {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Métadonnées du document
+  name          String
+  type          DocumentType
+  originalText  String    @db.Text
+  fileUrl       String?   // URL Supabase Storage si fichier uploadé
+  mimeType      String?
+  fileSize      Int?
+  
+  // Relations
+  analyses      Analysis[]
+  
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ===========================================
+// Types de documents
+// ===========================================
+enum DocumentType {
+  PDF           // Document PDF
+  WORD          // Document Word
+  TEXT          // Fichier texte
+  PASTE         // Texte collé
+  INVOICE       // Facture
+  CONTRACT      // Contrat
+  WEBSITE_TEXT  // Texte de site web
+  MARKETING     // Document marketing
+  LEGAL         // Document légal
+  OTHER         // Autre
+}
+
+// ===========================================
+// Modèle Analyse
+// ===========================================
+model Analysis {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentId    String
+  document      Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  
+  // Résultats de l'analyse
+  isCompliant       Boolean   @default(false)
+  complianceScore   Int       @default(0)  // Score 0-100
+  
+  // Détections de langue
+  detectedLanguage  String?   // "french" | "english" | "bilingual" | "other"
+  frenchPercentage  Float?    // 0-100
+  
+  // Problèmes détectés (JSON array)
+  issues        String?   @db.Text  // JSON stringifié
+  
+  // Suggestions de corrections
+  suggestions   String?   @db.Text  // JSON stringifié
+  
+  // Texte corrigé
+  correctedText String?   @db.Text
+  correctedPdfUrl String? // URL du PDF corrigé
+  
+  // Métadonnées
+  processingTime Int?     // En millisecondes
+  aiModel       String?   // Modèle Claude utilisé
+  
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  completedAt   DateTime?
+  
+  @@index([userId])
+  @@index([documentId])
+  @@index([createdAt])
+}
+
+// ===========================================
+// Modèle pour les webhooks Lemon Squeezy
+// ===========================================
+model WebhookEvent {
+  id            String    @id @default(cuid())
+  eventId       String    @unique
+  eventType     String
+  data          Json
+  processed     Boolean   @default(false)
+  
+  createdAt     DateTime  @default(now())
+  
+  @@index([eventId])
+  @@index([processed])
+}
