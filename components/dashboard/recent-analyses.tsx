@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -18,19 +17,17 @@ import {
   XCircle,
   ArrowRight,
   Clock,
-  Loader2,
 } from "lucide-react";
-import { getRecentAnalyses } from "@/app/actions/analyze";
-import { formatDate } from "@/lib/utils";
-import { ComplianceIssue } from "@/types";
+import { formatDistanceToNow } from "date-fns";
+import { fr } from "date-fns/locale";
 
 interface AnalysisItem {
   id: string;
   isCompliant: boolean;
   complianceScore: number;
-  detectedLanguage: string;
+  detectedLanguage: string | null;
   createdAt: Date;
-  issues: ComplianceIssue[];
+  issues: string | null;
   document: {
     id: string;
     name: string;
@@ -38,34 +35,14 @@ interface AnalysisItem {
   };
 }
 
+interface RecentAnalysesProps {
+  analyses: AnalysisItem[];
+}
+
 /**
  * Composant affichant les analyses récentes
  */
-export function RecentAnalyses() {
-  const [analyses, setAnalyses] = useState<AnalysisItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function fetchAnalyses() {
-      try {
-        const result = await getRecentAnalyses(5);
-        if (result.success) {
-          setAnalyses(result.analyses as unknown as AnalysisItem[]);
-        } else {
-          setError(result.error || "Erreur lors du chargement");
-        }
-      } catch (e) {
-        setError("Erreur lors du chargement des analyses");
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchAnalyses();
-  }, []);
-
+export function RecentAnalyses({ analyses }: RecentAnalysesProps) {
   // Fonction pour obtenir l'icône et la couleur selon le score
   const getScoreDisplay = (score: number) => {
     if (score >= 80) {
@@ -108,36 +85,16 @@ export function RecentAnalyses() {
     }
   };
 
-  if (loading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Analyses récentes</CardTitle>
-          <CardDescription>
-            Vos dernières vérifications de conformité
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (error) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Analyses récentes</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">{error}</p>
-        </CardContent>
-      </Card>
-    );
-  }
+  // Parse issues JSON
+  const getIssuesCount = (issuesJson: string | null): number => {
+    if (!issuesJson) return 0;
+    try {
+      const issues = JSON.parse(issuesJson);
+      return Array.isArray(issues) ? issues.length : 0;
+    } catch {
+      return 0;
+    }
+  };
 
   if (analyses.length === 0) {
     return (
@@ -151,12 +108,12 @@ export function RecentAnalyses() {
         <CardContent>
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground mb-4">
+            <p className="text-muted-foreground mb-2">
               Aucune analyse effectuée pour le moment
             </p>
-            <Button asChild>
-              <Link href="/dashboard">Analyser un document</Link>
-            </Button>
+            <p className="text-sm text-muted-foreground">
+              Uploadez un document ci-dessus pour commencer
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -184,6 +141,7 @@ export function RecentAnalyses() {
           {analyses.map((analysis) => {
             const scoreDisplay = getScoreDisplay(analysis.complianceScore);
             const ScoreIcon = scoreDisplay.icon;
+            const issuesCount = getIssuesCount(analysis.issues);
 
             return (
               <Link
@@ -203,13 +161,18 @@ export function RecentAnalyses() {
                       <p className="font-medium">{analysis.document.name}</p>
                       <div className="flex items-center space-x-2 text-sm text-muted-foreground">
                         <Clock className="h-3 w-3" />
-                        <span>{formatDate(analysis.createdAt)}</span>
-                        {analysis.issues.length > 0 && (
+                        <span>
+                          {formatDistanceToNow(new Date(analysis.createdAt), {
+                            addSuffix: true,
+                            locale: fr,
+                          })}
+                        </span>
+                        {issuesCount > 0 && (
                           <>
                             <span>•</span>
                             <span>
-                              {analysis.issues.length} problème
-                              {analysis.issues.length > 1 ? "s" : ""}
+                              {issuesCount} problème
+                              {issuesCount > 1 ? "s" : ""}
                             </span>
                           </>
                         )}

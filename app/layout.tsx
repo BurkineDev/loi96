@@ -1,7 +1,11 @@
 import type { Metadata, Viewport } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
+import { frFR } from "@clerk/localizations";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "sonner";
+import { PaddleProvider } from "@/components/paddle/paddle-provider";
 import "./globals.css";
 
 // ===========================================
@@ -9,25 +13,27 @@ import "./globals.css";
 // ===========================================
 export const metadata: Metadata = {
   title: {
-    default: "ConformLoi96 - Conformité à la Loi 96 pour vos documents",
-    template: "%s | ConformLoi96",
+    default: "Loi96.ca - Vos documents conformes à la Loi 96 en quelques clics",
+    template: "%s | Loi96.ca",
   },
   description:
-    "Vérifiez automatiquement la conformité de vos documents à la Loi 96 du Québec. Analysez factures, contrats et textes web avec l'IA pour assurer la prédominance du français.",
+    "Vérifiez automatiquement la conformité de vos documents commerciaux à la Loi 96 du Québec. Analysez factures, contrats et textes web avec l'IA pour assurer la prédominance du français. 5 vérifications gratuites par mois.",
   keywords: [
     "Loi 96",
-    "conformité",
-    "français",
-    "Québec",
-    "PME",
-    "facture",
-    "contrat",
+    "conformité linguistique",
+    "français Québec",
+    "PME québécoise",
+    "facture française",
+    "contrat français",
     "OQLF",
     "vérification linguistique",
+    "TPS TVQ",
+    "document bilingue",
+    "charte langue française",
   ],
-  authors: [{ name: "ConformLoi96" }],
-  creator: "ConformLoi96",
-  publisher: "ConformLoi96",
+  authors: [{ name: "Loi96.ca" }],
+  creator: "Loi96.ca",
+  publisher: "Loi96.ca",
   robots: {
     index: true,
     follow: true,
@@ -35,25 +41,25 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "fr_CA",
-    url: "https://conformloi96.com",
-    siteName: "ConformLoi96",
-    title: "ConformLoi96 - Conformité à la Loi 96 pour vos documents",
+    url: "https://loi96.ca",
+    siteName: "Loi96.ca",
+    title: "Loi96.ca - Vos documents conformes à la Loi 96 en quelques clics",
     description:
-      "Vérifiez automatiquement la conformité de vos documents à la Loi 96 du Québec avec l'intelligence artificielle.",
+      "Vérifiez automatiquement la conformité de vos documents à la Loi 96 du Québec avec l'intelligence artificielle. Essayez gratuitement!",
     images: [
       {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "ConformLoi96 - Vérification Loi 96",
+        alt: "Loi96.ca - Vérification conformité Loi 96",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "ConformLoi96 - Conformité à la Loi 96",
+    title: "Loi96.ca - Conformité Loi 96 pour vos documents",
     description:
-      "Vérifiez automatiquement la conformité de vos documents à la Loi 96 du Québec.",
+      "Vérifiez automatiquement la conformité de vos documents à la Loi 96 du Québec. 5 vérifications gratuites!",
     images: ["/og-image.png"],
   },
   icons: {
@@ -62,6 +68,9 @@ export const metadata: Metadata = {
     apple: "/apple-touch-icon.png",
   },
   manifest: "/site.webmanifest",
+  alternates: {
+    canonical: "https://loi96.ca",
+  },
 };
 
 export const viewport: Viewport = {
@@ -74,7 +83,7 @@ export const viewport: Viewport = {
 };
 
 // ===========================================
-// Layout racine
+// Layout racine avec Clerk
 // ===========================================
 export default function RootLayout({
   children,
@@ -82,18 +91,54 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="fr-CA"
-      className={`${GeistSans.variable} ${GeistMono.variable}`}
-      suppressHydrationWarning
+    <ClerkProvider
+      localization={frFR}
+      appearance={{
+        variables: {
+          colorPrimary: "#003DA5",
+          colorTextOnPrimaryBackground: "#FFFFFF",
+          colorBackground: "#FFFFFF",
+          colorInputBackground: "#FFFFFF",
+          colorInputText: "#1a1a2e",
+          borderRadius: "0.5rem",
+        },
+        elements: {
+          formButtonPrimary:
+            "bg-quebec-blue hover:bg-quebec-blue/90 text-white",
+          card: "shadow-lg",
+          headerTitle: "text-quebec-blue",
+          headerSubtitle: "text-gray-600",
+          socialButtonsBlockButton:
+            "border-gray-200 hover:bg-gray-50 text-gray-700",
+          formFieldInput:
+            "border-gray-300 focus:border-quebec-blue focus:ring-quebec-blue",
+          footerActionLink: "text-quebec-blue hover:text-quebec-blue/80",
+        },
+      }}
     >
-      <body className="min-h-screen bg-background font-sans antialiased">
-        {/* Contenu principal */}
-        {children}
+      <html
+        lang="fr-CA"
+        className={`${GeistSans.variable} ${GeistMono.variable}`}
+        suppressHydrationWarning
+      >
+        <body className="min-h-screen bg-background font-sans antialiased">
+          <PaddleProvider>
+            {/* Contenu principal */}
+            {children}
 
-        {/* Système de notifications toast */}
-        <Toaster />
-      </body>
-    </html>
+            {/* Système de notifications toast */}
+            <Toaster />
+            <SonnerToaster
+              position="top-right"
+              richColors
+              closeButton
+              toastOptions={{
+                duration: 4000,
+              }}
+            />
+          </PaddleProvider>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

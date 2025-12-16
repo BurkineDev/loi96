@@ -38,6 +38,8 @@ export type IssueType =
   | "TAX_TERMINOLOGY"
   | "BUSINESS_TERMINOLOGY"
   | "CONTRACT_CLAUSE"
+  | "LEGAL_MENTION"
+  | "BUTTON_LABEL"
   | "OTHER";
 
 /** Sévérité du problème */
@@ -51,6 +53,7 @@ export interface ComplianceIssue {
   description: string;
   location?: string;
   originalText?: string;
+  legalReference?: string; // Référence à l'article de loi (ex: "Art. 51.1 Loi 96")
 }
 
 /** Suggestion de correction */
@@ -68,6 +71,7 @@ export interface AnalysisResult {
   complianceScore: number;
   detectedLanguage: "french" | "english" | "bilingual" | "other";
   frenchPercentage: number;
+  summary?: string; // Résumé en 1-2 phrases
   issues: ComplianceIssue[];
   suggestions: CorrectionSuggestion[];
   correctedText?: string;
@@ -112,9 +116,24 @@ export interface SubscriptionInfo {
   checksUsed: number;
   checksLimit: number;
   checksRemaining: number;
+  trialEndsAt?: Date;
 }
 
-export type SubscriptionStatus = "active" | "canceled" | "past_due" | "trialing" | "none";
+export type SubscriptionStatus = "active" | "canceled" | "past_due" | "trialing" | "paused" | "none";
+
+/** Plans Paddle */
+export interface PaddlePlan {
+  id: string;
+  name: string;
+  description: string;
+  monthlyPriceId: string;
+  yearlyPriceId: string;
+  monthlyPrice: number;
+  yearlyPrice: number;
+  features: string[];
+  checksPerMonth: number | "unlimited";
+  popular?: boolean;
+}
 
 export interface PricingPlan {
   id: string;

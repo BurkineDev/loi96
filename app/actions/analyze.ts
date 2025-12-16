@@ -1,10 +1,11 @@
 "use server";
 
+import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser } from "./auth";
 import { analyzeTextForLoi96 } from "@/lib/ai/analyzer";
 import { extractTextFromFile, getMimeTypeFromExtension } from "@/lib/utils/file-parser";
+import { canPerformAnalysis, incrementChecksUsed } from "./user";
 
 /**
  * Analyser un document pour la conformité Loi 96
@@ -12,16 +13,17 @@ import { extractTextFromFile, getMimeTypeFromExtension } from "@/lib/utils/file-
 export async function analyzeDocument(formData: FormData) {
   try {
     // Vérifier l'authentification
-    const user = await getCurrentUser();
-    if (!user) {
+    const { userId } = await auth();
+    if (!userId) {
       return { success: false, error: "Non authentifié" };
     }
 
     // Vérifier si l'utilisateur peut analyser
-    if (!user.canAnalyze) {
+    const analysisCheck = await canPerformAnalysis();
+    if (!analysisCheck.canAnalyze) {
       return {
         success: false,
-        error: "Vous avez atteint votre limite mensuelle de vérifications. Passez au forfait Pro pour des analyses illimitées.",
+        error: analysisCheck.reason || "Vous avez atteint votre limite mensuelle de vérifications.",
       };
     }
 
@@ -74,10 +76,12 @@ export async function analyzeDocument(formData: FormData) {
       };
     }
 
+    const startTime = Date.now();
+
     // Créer le document dans la base de données
     const document = await prisma.document.create({
       data: {
-        userId: user.id,
+        userId,
         name: name.trim(),
         type: documentType,
         originalText: extractedText,
@@ -88,10 +92,12 @@ export async function analyzeDocument(formData: FormData) {
     // Analyser avec l'IA
     const analysisResult = await analyzeTextForLoi96(extractedText, name);
 
+    const processingTime = Date.now() - startTime;
+
     // Créer l'analyse dans la base de données
     const analysis = await prisma.analysis.create({
       data: {
-        userId: user.id,
+        userId,
         documentId: document.id,
         isCompliant: analysisResult.isCompliant,
         complianceScore: analysisResult.complianceScore,
@@ -100,18 +106,14 @@ export async function analyzeDocument(formData: FormData) {
         issues: JSON.stringify(analysisResult.issues),
         suggestions: JSON.stringify(analysisResult.suggestions),
         correctedText: analysisResult.correctedText || null,
+        processingTime,
+        aiModel: "claude-sonnet-4-20250514",
+        completedAt: new Date(),
       },
     });
 
-    // Incrémenter le compteur de vérifications si utilisateur gratuit
-    if (!user.isSubscribed) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          freeChecksUsed: { increment: 1 },
-        },
-      });
-    }
+    // Incrémenter le compteur de vérifications
+    await incrementChecksUsed();
 
     // Revalider les pages
     revalidatePath("/dashboard");
@@ -136,8 +138,8 @@ export async function analyzeDocument(formData: FormData) {
  */
 export async function getAnalysis(analysisId: string) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
+    const { userId } = await auth();
+    if (!userId) {
       return { success: false, error: "Non authentifié" };
     }
 
@@ -152,7 +154,7 @@ export async function getAnalysis(analysisId: string) {
       return { success: false, error: "Analyse non trouvée" };
     }
 
-    if (analysis.userId !== user.id) {
+    if (analysis.userId !== userId) {
       return { success: false, error: "Accès non autorisé" };
     }
 
@@ -178,13 +180,13 @@ export async function getAnalysis(analysisId: string) {
  */
 export async function getRecentAnalyses(limit = 5) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
+    const { userId } = await auth();
+    if (!userId) {
       return { success: false, error: "Non authentifié", analyses: [] };
     }
 
     const analyses = await prisma.analysis.findMany({
-      where: { userId: user.id },
+      where: { userId },
       orderBy: { createdAt: "desc" },
       take: limit,
       include: {
@@ -221,8 +223,8 @@ export async function getRecentAnalyses(limit = 5) {
  */
 export async function getAllAnalyses(page = 1, pageSize = 10) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
+    const { userId } = await auth();
+    if (!userId) {
       return { success: false, error: "Non authentifié", analyses: [], total: 0 };
     }
 
@@ -230,7 +232,7 @@ export async function getAllAnalyses(page = 1, pageSize = 10) {
 
     const [analyses, total] = await Promise.all([
       prisma.analysis.findMany({
-        where: { userId: user.id },
+        where: { userId },
         orderBy: { createdAt: "desc" },
         skip,
         take: pageSize,
@@ -245,7 +247,7 @@ export async function getAllAnalyses(page = 1, pageSize = 10) {
         },
       }),
       prisma.analysis.count({
-        where: { userId: user.id },
+        where: { userId },
       }),
     ]);
 
@@ -276,8 +278,8 @@ export async function getAllAnalyses(page = 1, pageSize = 10) {
  */
 export async function deleteAnalysis(analysisId: string) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
+    const { userId } = await auth();
+    if (!userId) {
       return { success: false, error: "Non authentifié" };
     }
 
@@ -289,7 +291,7 @@ export async function deleteAnalysis(analysisId: string) {
       return { success: false, error: "Analyse non trouvée" };
     }
 
-    if (analysis.userId !== user.id) {
+    if (analysis.userId !== userId) {
       return { success: false, error: "Accès non autorisé" };
     }
 
