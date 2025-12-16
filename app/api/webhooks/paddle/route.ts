@@ -8,11 +8,14 @@ const PADDLE_WEBHOOK_SECRET = process.env.PADDLE_WEBHOOK_SECRET || "";
 /**
  * Verify Paddle webhook signature
  */
+// Maximum age of webhook signature (5 minutes)
+const MAX_WEBHOOK_AGE_MS = 5 * 60 * 1000;
+
 function verifyPaddleSignature(
   payload: string,
   signature: string,
   secret: string
-): boolean {
+): { valid: boolean; error?: string } {
   try {
     // Parse the signature header
     // Format: ts=xxx;h1=xxx
@@ -21,12 +24,18 @@ function verifyPaddleSignature(
     const h1Match = parts[1]?.match(/h1=(.+)/);
 
     if (!tsMatch || !h1Match) {
-      console.error("Invalid signature format");
-      return false;
+      return { valid: false, error: "Invalid signature format" };
     }
 
     const timestamp = tsMatch[1];
     const providedSignature = h1Match[1];
+
+    // SECURITY: Prevent replay attacks - reject old signatures
+    const signatureTime = parseInt(timestamp, 10) * 1000; // Convert to ms
+    const now = Date.now();
+    if (now - signatureTime > MAX_WEBHOOK_AGE_MS) {
+      return { valid: false, error: "Signature expired (replay attack prevention)" };
+    }
 
     // Recreate the signed payload
     const signedPayload = `${timestamp}:${payload}`;
@@ -38,13 +47,15 @@ function verifyPaddleSignature(
       .digest("hex");
 
     // Compare signatures using timing-safe comparison
-    return crypto.timingSafeEquals(
+    const valid = crypto.timingSafeEquals(
       Buffer.from(providedSignature),
       Buffer.from(expectedSignature)
     );
+
+    return { valid };
   } catch (error) {
     console.error("Signature verification error:", error);
-    return false;
+    return { valid: false, error: "Verification failed" };
   }
 }
 
@@ -88,13 +99,27 @@ export async function POST(req: NextRequest) {
     const payload = await req.text();
     const signature = req.headers.get("paddle-signature");
 
-    // Verify signature in production
-    if (PADDLE_WEBHOOK_SECRET && signature) {
-      const isValid = verifyPaddleSignature(payload, signature, PADDLE_WEBHOOK_SECRET);
-      if (!isValid) {
-        console.error("Invalid webhook signature");
-        return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-      }
+    // SECURITY: Always require signature verification in production
+    if (!PADDLE_WEBHOOK_SECRET) {
+      console.error("PADDLE_WEBHOOK_SECRET is not configured");
+      return NextResponse.json(
+        { error: "Webhook not configured" },
+        { status: 500 }
+      );
+    }
+
+    if (!signature) {
+      console.error("Missing paddle-signature header");
+      return NextResponse.json(
+        { error: "Missing signature" },
+        { status: 401 }
+      );
+    }
+
+    const verification = verifyPaddleSignature(payload, signature, PADDLE_WEBHOOK_SECRET);
+    if (!verification.valid) {
+      console.error("Webhook signature verification failed:", verification.error);
+      return NextResponse.json({ error: verification.error || "Invalid signature" }, { status: 401 });
     }
 
     const event = JSON.parse(payload);

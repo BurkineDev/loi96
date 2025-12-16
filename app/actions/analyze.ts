@@ -7,6 +7,11 @@ import { analyzeTextForLoi96 } from "@/lib/ai/analyzer";
 import { extractTextFromFile, getMimeTypeFromExtension } from "@/lib/utils/file-parser";
 import { canPerformAnalysis, incrementChecksUsed } from "./user";
 
+// Security constants
+const MAX_TEXT_LENGTH = 500000; // 500K characters max
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_DOCUMENT_NAME_LENGTH = 200;
+
 /**
  * Analyser un document pour la conformité Loi 96
  */
@@ -36,6 +41,30 @@ export async function analyzeDocument(formData: FormData) {
     // Validation
     if (!name || name.trim().length === 0) {
       return { success: false, error: "Le nom du document est requis" };
+    }
+
+    // SECURITY: Validate document name length
+    if (name.trim().length > MAX_DOCUMENT_NAME_LENGTH) {
+      return {
+        success: false,
+        error: `Le nom du document ne peut pas dépasser ${MAX_DOCUMENT_NAME_LENGTH} caractères`
+      };
+    }
+
+    // SECURITY: Validate file size
+    if (file && file.size > MAX_FILE_SIZE) {
+      return {
+        success: false,
+        error: "Le fichier est trop volumineux (maximum 10 Mo)"
+      };
+    }
+
+    // SECURITY: Validate pasted text length
+    if (text && text.length > MAX_TEXT_LENGTH) {
+      return {
+        success: false,
+        error: `Le texte est trop long (maximum ${MAX_TEXT_LENGTH.toLocaleString()} caractères)`
+      };
     }
 
     let extractedText: string;
@@ -74,6 +103,12 @@ export async function analyzeDocument(formData: FormData) {
         success: false,
         error: "Le document ne contient pas assez de texte à analyser",
       };
+    }
+
+    // SECURITY: Limit extracted text length (from file parsing)
+    if (extractedText.length > MAX_TEXT_LENGTH) {
+      extractedText = extractedText.substring(0, MAX_TEXT_LENGTH);
+      console.warn(`Text truncated to ${MAX_TEXT_LENGTH} characters for user ${userId}`);
     }
 
     const startTime = Date.now();
