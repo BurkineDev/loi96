@@ -64,8 +64,8 @@ export function DocumentUploader({
 
   // Configuration de react-dropzone
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      const selectedFile = acceptedFiles[0];
+    const selectedFile = acceptedFiles[0];
+    if (selectedFile) {
       setFile(selectedFile);
       // Utiliser le nom du fichier sans l'extension comme nom par défaut
       setDocumentName(selectedFile.name.replace(/\.[^/.]+$/, ""));
@@ -159,7 +159,7 @@ export function DocumentUploader({
   // Message d'erreur pour les fichiers rejetés
   const fileRejectionMessage =
     fileRejections.length > 0
-      ? fileRejections[0].errors[0].code === "file-too-large"
+      ? fileRejections[0]?.errors[0]?.code === "file-too-large"
         ? "Le fichier est trop volumineux (max 10 Mo)"
         : "Type de fichier non supporté"
       : null;

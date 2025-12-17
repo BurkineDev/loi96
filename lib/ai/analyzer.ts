@@ -297,8 +297,9 @@ Retourne l'analyse en JSON.`,
     });
 
     // Extraire le texte de la réponse
+    const firstContent = response.content[0];
     const responseText =
-      response.content[0].type === "text" ? response.content[0].text : "";
+      firstContent?.type === "text" ? firstContent.text : "";
 
     // Parser le JSON
     let analysisData: {
@@ -428,8 +429,9 @@ Document corrigé:`,
       ],
     });
 
+    const firstContent = response.content[0];
     const correctedText =
-      response.content[0].type === "text" ? response.content[0].text : text;
+      firstContent?.type === "text" ? firstContent.text : text;
 
     return correctedText.trim();
   } catch (error) {

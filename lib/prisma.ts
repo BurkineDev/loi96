@@ -3,7 +3,7 @@
 // ===========================================
 // Évite les connexions multiples en développement
 
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
@@ -20,7 +20,7 @@ export const prisma =
       throw new Error("DATABASE_URL is not set");
     }
 
-    const logLevels =
+    const logLevels: Prisma.LogLevel[] =
       process.env.NODE_ENV === "development"
         ? ["query", "error", "warn"]
         : ["error"];

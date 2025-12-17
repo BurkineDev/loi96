@@ -30,6 +30,10 @@ function verifyPaddleSignature(
     const timestamp = tsMatch[1];
     const providedSignature = h1Match[1];
 
+    if (!timestamp || !providedSignature) {
+      return { valid: false, error: "Missing timestamp or signature" };
+    }
+
     // SECURITY: Prevent replay attacks - reject old signatures
     const signatureTime = parseInt(timestamp, 10) * 1000; // Convert to ms
     const now = Date.now();
@@ -47,7 +51,7 @@ function verifyPaddleSignature(
       .digest("hex");
 
     // Compare signatures using timing-safe comparison
-    const valid = crypto.timingSafeEquals(
+    const valid = crypto.timingSafeEqual(
       Buffer.from(providedSignature),
       Buffer.from(expectedSignature)
     );
