@@ -25,8 +25,15 @@ export async function getCurrentUser() {
     const clerkUser = await currentUser();
     if (!clerkUser) return null;
 
-    user = await prisma.user.create({
-      data: {
+    user = await prisma.user.upsert({
+      where: { id: userId },
+      update: {
+        email: clerkUser.emailAddresses[0]?.emailAddress || "",
+        firstName: clerkUser.firstName,
+        lastName: clerkUser.lastName,
+        imageUrl: clerkUser.imageUrl,
+      },
+      create: {
         id: userId,
         email: clerkUser.emailAddresses[0]?.emailAddress || "",
         firstName: clerkUser.firstName,
