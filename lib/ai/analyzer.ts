@@ -440,4 +440,93 @@ Document corrigé:`,
   }
 }
 
+/**
+ * Prompt spécialisé pour l'analyse d'enseignes et affichage commercial
+ */
+const SIGNAGE_SYSTEM_PROMPT = `Tu es un expert indépendant en conformité linguistique pour la Loi 96 au Québec (Loi sur la langue officielle et commune du Québec, le français, en vigueur depuis 2025).
+
+Règles clés pour l'affichage public extérieur et commercial visible de l'extérieur (enseignes, vitrines, affiches) :
+- Si une marque de commerce ou un nom d'entreprise est dans une langue autre que le français (ex. anglais), le texte en français doit être NETTEMENT PRÉDOMINANT dans le même champ visuel.
+- "Nettement prédominant" signifie un impact visuel beaucoup plus important : généralement, la superficie occupée par le français doit être au moins deux fois plus grande que celle du texte non français.
+- Le français ajouté doit être un générique (ex. "Magasin", "Boutique", "Chaussures"), un descriptif (ex. "Vêtements pour hommes") ou un slogan (ex. "Qualité et service depuis 1980").
+- Le français doit avoir une lisibilité et visibilité équivalentes (éclairage, position, police lisible).
+- Exceptions rares (ex. véhicules circulant hors Québec).
+- Basé sur les directives officielles de l'OQLF et le Règlement sur la langue du commerce et des affaires (juin 2024).
+
+Réponds EXCLUSIVEMENT au format JSON suivant (pas de texte supplémentaire) :
+{
+  "score": Nombre entier de 0 à 100 (100 = parfaitement conforme, 0 = totalement non conforme),
+  "problems": Tableau de strings décrivant les problèmes précis,
+  "suggestions": Tableau de strings avec corrections concrètes,
+  "correctedDescription": Description textuelle détaillée d'une version corrigée de l'enseigne
+}
+
+Sois strict, objectif et basé uniquement sur les règles de la Loi 96 / OQLF. Si l'enseigne est 100% en français, score 100.`;
+
+/**
+ * Analyser une enseigne ou affichage commercial pour la conformité Loi 96
+ */
+export async function analyzeSignageForLoi96(
+  description: string
+): Promise<{
+  score: number;
+  problems: string[];
+  suggestions: string[];
+  correctedDescription: string;
+}> {
+  const client = getAnthropicClient();
+
+  try {
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 2048,
+      system: SIGNAGE_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: `Analyse l'enseigne ou l'affichage commercial suivant pour la conformité à la Loi 96:
+
+"${description}"
+
+Retourne l'analyse en JSON.`,
+        },
+      ],
+    });
+
+    const firstContent = response.content[0];
+    const responseText =
+      firstContent?.type === "text" ? firstContent.text : "";
+
+    let analysisData: {
+      score: number;
+      problems: string[];
+      suggestions: string[];
+      correctedDescription: string;
+    };
+
+    try {
+      analysisData = JSON.parse(responseText);
+    } catch {
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        analysisData = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("Impossible de parser la réponse de l'IA");
+      }
+    }
+
+    return {
+      score: Math.max(0, Math.min(100, analysisData.score)),
+      problems: analysisData.problems || [],
+      suggestions: analysisData.suggestions || [],
+      correctedDescription: analysisData.correctedDescription || "",
+    };
+  } catch (error) {
+    console.error("Erreur lors de l'analyse d'enseigne:", error);
+    throw new Error(
+      `Erreur lors de l'analyse: ${error instanceof Error ? error.message : "Erreur inconnue"}`
+    );
+  }
+}
+
 export type { AnalysisResult };
