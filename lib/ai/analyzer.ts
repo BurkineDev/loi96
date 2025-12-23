@@ -6,6 +6,11 @@ import {
   IssueType,
   IssueSeverity,
 } from "@/types";
+import {
+  DELIMITERS,
+  wrapUserContent,
+  getPostContentInstructions,
+} from "@/lib/security/prompt-sanitizer";
 
 // Prompt système ULTRA-PRÉCIS pour l'analyse de conformité Loi 96
 const SYSTEM_PROMPT = `Tu es un expert juridique certifié en conformité linguistique pour la Loi 96 du Québec (Loi sur la langue officielle et commune du Québec, anciennement Charte de la langue française). Tu travailles pour des PME québécoises et tu dois identifier TOUTES les non-conformités avec précision.
@@ -275,6 +280,10 @@ export async function analyzeTextForLoi96(
   const client = getAnthropicClient();
 
   try {
+    // SECURITY: Encapsuler le contenu utilisateur avec des délimiteurs sécurisés
+    const wrappedContent = wrapUserContent(text);
+    const securityInstructions = getPostContentInstructions();
+
     const response = await client.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 4096,
@@ -286,10 +295,9 @@ export async function analyzeTextForLoi96(
 
 Nom du document: ${documentName}
 
-Contenu:
----
-${text}
----
+${wrappedContent}
+
+${securityInstructions}
 
 Retourne l'analyse en JSON.`,
         },
@@ -477,6 +485,10 @@ export async function analyzeSignageForLoi96(
   const client = getAnthropicClient();
 
   try {
+    // SECURITY: Encapsuler le contenu utilisateur avec des délimiteurs sécurisés
+    const wrappedContent = wrapUserContent(description);
+    const securityInstructions = getPostContentInstructions();
+
     const response = await client.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 2048,
@@ -486,7 +498,9 @@ export async function analyzeSignageForLoi96(
           role: "user",
           content: `Analyse l'enseigne ou l'affichage commercial suivant pour la conformité à la Loi 96:
 
-"${description}"
+${wrappedContent}
+
+${securityInstructions}
 
 Retourne l'analyse en JSON.`,
         },
