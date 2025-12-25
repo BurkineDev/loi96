@@ -4,11 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
 import { motion } from "framer-motion";
-import { Check, Shield, Zap, Crown, ArrowRight, HelpCircle } from "lucide-react";
+import { Check, Shield, Zap, Crown, ArrowRight, HelpCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { usePaddle } from "@/components/paddle/paddle-provider";
-import { PLANS, calculateYearlySavings } from "@/lib/paddle";
 import {
   Accordion,
   AccordionContent,
@@ -16,12 +14,68 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
+// Plans configuration (must match Stripe products)
+const PLANS = [
+  {
+    id: "free",
+    name: "Gratuit",
+    description: "Pour commencer",
+    monthlyPrice: 0,
+    yearlyPrice: 0,
+    features: [
+      "5 vérifications par mois",
+      "Analyse de conformité de base",
+      "Détection de langue",
+      "Score de conformité",
+    ],
+  },
+  {
+    id: "starter",
+    name: "Starter",
+    description: "Pour les petites entreprises",
+    monthlyPrice: 19,
+    yearlyPrice: 190,
+    features: [
+      "Vérifications illimitées",
+      "Analyse de conformité avancée",
+      "Suggestions de corrections",
+      "Historique des analyses",
+      "Support par email",
+    ],
+    popular: true,
+  },
+  {
+    id: "pro",
+    name: "Pro",
+    description: "Pour les grandes entreprises",
+    monthlyPrice: 49,
+    yearlyPrice: 490,
+    features: [
+      "Tout dans Starter",
+      "Analyse d'enseignes commerciales",
+      "Documents corrigés automatiquement",
+      "Export PDF des corrections",
+      "Support prioritaire",
+    ],
+  },
+];
+
+function calculateYearlySavings(monthlyPrice: number, yearlyPrice: number) {
+  if (monthlyPrice === 0) {
+    return { savings: 0, percentage: 0 };
+  }
+  const monthlyTotal = monthlyPrice * 12;
+  const savings = monthlyTotal - yearlyPrice;
+  const percentage = Math.round((savings / monthlyTotal) * 100);
+  return { savings, percentage };
+}
+
 export default function TarifsPage() {
   const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly">("monthly");
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const { user, isSignedIn } = useUser();
-  const { openCheckout, isLoaded } = usePaddle();
 
-  const handleSelectPlan = (planId: string) => {
+  const handleSelectPlan = async (planId: string) => {
     if (planId === "free") {
       if (isSignedIn) {
         window.location.href = "/dashboard";
@@ -31,21 +85,39 @@ export default function TarifsPage() {
       return;
     }
 
-    const plan = PLANS.find((p) => p.id === planId);
-    if (!plan) return;
-
-    const priceId = billingInterval === "monthly" ? plan.monthlyPriceId : plan.yearlyPriceId;
-
-    if (!priceId) {
-      console.error("No price ID for plan:", planId);
+    if (!isSignedIn) {
+      // Redirect to sign up first
+      window.location.href = `/sign-up?plan=${planId}&interval=${billingInterval}`;
       return;
     }
 
-    if (isSignedIn && user?.primaryEmailAddress?.emailAddress) {
-      openCheckout(priceId, user.primaryEmailAddress.emailAddress);
-    } else {
-      // Redirect to sign up first
-      window.location.href = `/sign-up?plan=${planId}&interval=${billingInterval}`;
+    setLoadingPlan(planId);
+
+    try {
+      const response = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          planId: planId.toUpperCase(),
+          interval: billingInterval,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        console.error("No checkout URL returned:", data.error);
+        alert("Erreur lors de la création de la session de paiement. Veuillez réessayer.");
+      }
+    } catch (error) {
+      console.error("Error creating checkout session:", error);
+      alert("Erreur lors de la création de la session de paiement. Veuillez réessayer.");
+    } finally {
+      setLoadingPlan(null);
     }
   };
 
@@ -162,11 +234,12 @@ export default function TarifsPage() {
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {PLANS.map((plan, index) => {
-              const savings = calculateYearlySavings(plan);
+              const savings = calculateYearlySavings(plan.monthlyPrice, plan.yearlyPrice);
               const price = billingInterval === "monthly" ? plan.monthlyPrice : plan.yearlyPrice;
               const priceLabel = billingInterval === "monthly" ? "/mois" : "/an";
 
               const Icon = plan.id === "free" ? Shield : plan.id === "starter" ? Zap : Crown;
+              const isLoading = loadingPlan === plan.id;
 
               return (
                 <motion.div
@@ -223,14 +296,19 @@ export default function TarifsPage() {
 
                   <Button
                     onClick={() => handleSelectPlan(plan.id)}
-                    disabled={!isLoaded && plan.id !== "free"}
+                    disabled={isLoading || loadingPlan !== null}
                     className={`w-full ${
                       plan.popular
                         ? "bg-quebec-blue hover:bg-quebec-blue/90"
                         : "bg-gray-900 hover:bg-gray-800"
                     }`}
                   >
-                    {plan.id === "free" ? (
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Chargement...
+                      </>
+                    ) : plan.id === "free" ? (
                       <>
                         Commencer gratuitement
                         <ArrowRight className="w-4 h-4 ml-2" />

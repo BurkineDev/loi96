@@ -21,10 +21,12 @@ model User {
   lastName      String?
   imageUrl      String?
 
-  // Abonnement Paddle
+  // Abonnement Stripe (ou Paddle en fallback)
   plan                    Plan      @default(FREE)
-  paddleCustomerId        String?   @unique  // ctm_xxx
-  paddleSubscriptionId    String?   @unique  // sub_xxx
+  stripeCustomerId        String?   @unique  // cus_xxx
+  stripeSubscriptionId    String?   @unique  // sub_xxx
+  paddleCustomerId        String?   @unique  // ctm_xxx (legacy)
+  paddleSubscriptionId    String?   @unique  // sub_xxx (legacy)
   subscriptionStatus      SubscriptionStatus @default(FREE)
   currentPeriodStart      DateTime?
   currentPeriodEnd        DateTime?
