@@ -1,10 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Configuration expérimentale pour Next.js 15
-  experimental: {
-    // Server Actions activés par défaut dans Next.js 15
-  },
   // Configuration des images
   images: {
     remotePatterns: [
@@ -18,16 +14,11 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // Turbopack config (Next.js 15+)
+  // Turbopack config (Next.js 16+)
   turbopack: {
     resolveAlias: {
-      canvas: false,
+      canvas: "./empty-module.js",
     },
-  },
-  // Webpack config pour pdf-parse (fallback)
-  webpack: (config) => {
-    config.resolve.alias.canvas = false;
-    return config;
   },
 };
 
