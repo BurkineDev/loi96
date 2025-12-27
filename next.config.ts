@@ -18,7 +18,13 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // Webpack config pour pdf-parse
+  // Turbopack config (Next.js 15+)
+  turbopack: {
+    resolveAlias: {
+      canvas: false,
+    },
+  },
+  // Webpack config pour pdf-parse (fallback)
   webpack: (config) => {
     config.resolve.alias.canvas = false;
     return config;
