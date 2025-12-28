@@ -14,12 +14,8 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // Turbopack config (Next.js 16+)
-  turbopack: {
-    resolveAlias: {
-      canvas: "./empty-module.js",
-    },
-  },
+  // Turbopack config vide (Next.js 16+)
+  turbopack: {},
 };
 
 export default nextConfig;
