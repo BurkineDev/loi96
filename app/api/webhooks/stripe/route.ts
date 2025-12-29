@@ -93,8 +93,13 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   }
 
   // Récupérer les détails de l'abonnement
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-  const priceId = subscription.items.data[0]?.price.id;
+  const subscriptionData = await stripe.subscriptions.retrieve(subscriptionId) as Stripe.Subscription;
+  const priceId = subscriptionData.items.data[0]?.price.id;
+
+  if (!priceId) {
+    console.error("No price ID found in subscription");
+    return;
+  }
 
   // Déterminer le plan
   const plan = getPlanFromPriceId(priceId);
@@ -107,8 +112,6 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       stripeSubscriptionId: subscriptionId,
       plan,
       subscriptionStatus: "ACTIVE",
-      currentPeriodStart: new Date(subscription.current_period_start * 1000),
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
     },
   });
 
@@ -118,6 +121,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 async function handleSubscriptionChange(subscription: Stripe.Subscription) {
   const customerId = subscription.customer as string;
   const priceId = subscription.items.data[0]?.price.id;
+
+  if (!priceId) {
+    console.error("No price ID found in subscription");
+    return;
+  }
+
   const plan = getPlanFromPriceId(priceId);
 
   // Trouver l'utilisateur par customerId
@@ -144,8 +153,6 @@ async function handleSubscriptionChange(subscription: Stripe.Subscription) {
     data: {
       plan,
       subscriptionStatus: statusMap[subscription.status] || "ACTIVE",
-      currentPeriodStart: new Date(subscription.current_period_start * 1000),
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
     },
   });
 
@@ -200,7 +207,12 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
 }
 
 function getPlanFromPriceId(priceId: string): "STARTER" | "PRO" {
-  if (priceId === process.env.STRIPE_STARTER_PRICE_ID) {
+  const starterPriceIds = [
+    process.env.STRIPE_STARTER_MONTHLY_PRICE_ID,
+    process.env.STRIPE_STARTER_YEARLY_PRICE_ID,
+  ];
+
+  if (starterPriceIds.includes(priceId)) {
     return "STARTER";
   }
   return "PRO";
