@@ -1,10 +1,19 @@
 "use server";
 
+import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser } from "./auth";
 import { analyzeTextForLoi96 } from "@/lib/ai/analyzer";
 import { extractTextFromFile, getMimeTypeFromExtension } from "@/lib/utils/file-parser";
+import { canPerformAnalysis, incrementChecksUsed } from "./user";
+import { rateLimiters } from "@/lib/security/rate-limit";
+import { validateUploadedFile } from "@/lib/security/file-validator";
+import { sanitizeForAI, logSuspiciousActivity } from "@/lib/security/prompt-sanitizer";
+
+// Security constants
+const MAX_TEXT_LENGTH = 500000; // 500K characters max
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_DOCUMENT_NAME_LENGTH = 200;
 
 /**
  * Analyser un document pour la conformité Loi 96
@@ -12,16 +21,26 @@ import { extractTextFromFile, getMimeTypeFromExtension } from "@/lib/utils/file-
 export async function analyzeDocument(formData: FormData) {
   try {
     // Vérifier l'authentification
-    const user = await getCurrentUser();
-    if (!user) {
+    const { userId } = await auth();
+    if (!userId) {
       return { success: false, error: "Non authentifié" };
     }
 
-    // Vérifier si l'utilisateur peut analyser
-    if (!user.canAnalyze) {
+    // SECURITY: Rate limiting
+    const rateLimit = await rateLimiters.analyze(userId);
+    if (!rateLimit.success) {
       return {
         success: false,
-        error: "Vous avez atteint votre limite mensuelle de vérifications. Passez au forfait Pro pour des analyses illimitées.",
+        error: "Trop de requêtes. Veuillez patienter 1 minute avant de réessayer.",
+      };
+    }
+
+    // Vérifier si l'utilisateur peut analyser
+    const analysisCheck = await canPerformAnalysis();
+    if (!analysisCheck.canAnalyze) {
+      return {
+        success: false,
+        error: analysisCheck.reason || "Vous avez atteint votre limite mensuelle de vérifications.",
       };
     }
 
@@ -36,6 +55,30 @@ export async function analyzeDocument(formData: FormData) {
       return { success: false, error: "Le nom du document est requis" };
     }
 
+    // SECURITY: Validate document name length
+    if (name.trim().length > MAX_DOCUMENT_NAME_LENGTH) {
+      return {
+        success: false,
+        error: `Le nom du document ne peut pas dépasser ${MAX_DOCUMENT_NAME_LENGTH} caractères`
+      };
+    }
+
+    // SECURITY: Validate file size
+    if (file && file.size > MAX_FILE_SIZE) {
+      return {
+        success: false,
+        error: "Le fichier est trop volumineux (maximum 10 Mo)"
+      };
+    }
+
+    // SECURITY: Validate pasted text length
+    if (text && text.length > MAX_TEXT_LENGTH) {
+      return {
+        success: false,
+        error: `Le texte est trop long (maximum ${MAX_TEXT_LENGTH.toLocaleString()} caractères)`
+      };
+    }
+
     let extractedText: string;
     let documentType: "PDF" | "WORD" | "TEXT" | "PASTE";
     let fileUrl: string | null = null;
@@ -43,8 +86,18 @@ export async function analyzeDocument(formData: FormData) {
     // Extraire le texte selon le type
     if (type === "FILE" && file) {
       const mimeType = file.type || getMimeTypeFromExtension(file.name);
+
+      // SECURITY: Valider les magic bytes du fichier
+      const fileValidation = await validateUploadedFile(file, mimeType);
+      if (!fileValidation.valid) {
+        return {
+          success: false,
+          error: fileValidation.error || "Type de fichier invalide",
+        };
+      }
+
       extractedText = await extractTextFromFile(file, mimeType);
-      
+
       // Déterminer le type de document
       if (mimeType === "application/pdf") {
         documentType = "PDF";
@@ -74,10 +127,28 @@ export async function analyzeDocument(formData: FormData) {
       };
     }
 
+    // SECURITY: Limit extracted text length (from file parsing)
+    if (extractedText.length > MAX_TEXT_LENGTH) {
+      extractedText = extractedText.substring(0, MAX_TEXT_LENGTH);
+      console.warn(`Text truncated to ${MAX_TEXT_LENGTH} characters for user ${userId}`);
+    }
+
+    // SECURITY: Détecter et logger les tentatives de prompt injection
+    const sanitization = sanitizeForAI(extractedText);
+    if (sanitization.riskLevel !== "low") {
+      logSuspiciousActivity(userId, "analyzeDocument", {
+        suspiciousPatterns: sanitization.suspiciousPatterns,
+        riskLevel: sanitization.riskLevel,
+        textLength: extractedText.length,
+      });
+    }
+
+    const startTime = Date.now();
+
     // Créer le document dans la base de données
     const document = await prisma.document.create({
       data: {
-        userId: user.id,
+        userId,
         name: name.trim(),
         type: documentType,
         originalText: extractedText,
@@ -88,10 +159,12 @@ export async function analyzeDocument(formData: FormData) {
     // Analyser avec l'IA
     const analysisResult = await analyzeTextForLoi96(extractedText, name);
 
+    const processingTime = Date.now() - startTime;
+
     // Créer l'analyse dans la base de données
     const analysis = await prisma.analysis.create({
       data: {
-        userId: user.id,
+        userId,
         documentId: document.id,
         isCompliant: analysisResult.isCompliant,
         complianceScore: analysisResult.complianceScore,
@@ -100,18 +173,14 @@ export async function analyzeDocument(formData: FormData) {
         issues: JSON.stringify(analysisResult.issues),
         suggestions: JSON.stringify(analysisResult.suggestions),
         correctedText: analysisResult.correctedText || null,
+        processingTime,
+        aiModel: "claude-sonnet-4-20250514",
+        completedAt: new Date(),
       },
     });
 
-    // Incrémenter le compteur de vérifications si utilisateur gratuit
-    if (!user.isSubscribed) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          freeChecksUsed: { increment: 1 },
-        },
-      });
-    }
+    // Incrémenter le compteur de vérifications
+    await incrementChecksUsed();
 
     // Revalider les pages
     revalidatePath("/dashboard");
@@ -136,8 +205,8 @@ export async function analyzeDocument(formData: FormData) {
  */
 export async function getAnalysis(analysisId: string) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
+    const { userId } = await auth();
+    if (!userId) {
       return { success: false, error: "Non authentifié" };
     }
 
@@ -152,7 +221,7 @@ export async function getAnalysis(analysisId: string) {
       return { success: false, error: "Analyse non trouvée" };
     }
 
-    if (analysis.userId !== user.id) {
+    if (analysis.userId !== userId) {
       return { success: false, error: "Accès non autorisé" };
     }
 
@@ -178,13 +247,13 @@ export async function getAnalysis(analysisId: string) {
  */
 export async function getRecentAnalyses(limit = 5) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
+    const { userId } = await auth();
+    if (!userId) {
       return { success: false, error: "Non authentifié", analyses: [] };
     }
 
     const analyses = await prisma.analysis.findMany({
-      where: { userId: user.id },
+      where: { userId },
       orderBy: { createdAt: "desc" },
       take: limit,
       include: {
@@ -221,8 +290,8 @@ export async function getRecentAnalyses(limit = 5) {
  */
 export async function getAllAnalyses(page = 1, pageSize = 10) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
+    const { userId } = await auth();
+    if (!userId) {
       return { success: false, error: "Non authentifié", analyses: [], total: 0 };
     }
 
@@ -230,7 +299,7 @@ export async function getAllAnalyses(page = 1, pageSize = 10) {
 
     const [analyses, total] = await Promise.all([
       prisma.analysis.findMany({
-        where: { userId: user.id },
+        where: { userId },
         orderBy: { createdAt: "desc" },
         skip,
         take: pageSize,
@@ -245,7 +314,7 @@ export async function getAllAnalyses(page = 1, pageSize = 10) {
         },
       }),
       prisma.analysis.count({
-        where: { userId: user.id },
+        where: { userId },
       }),
     ]);
 
@@ -276,8 +345,8 @@ export async function getAllAnalyses(page = 1, pageSize = 10) {
  */
 export async function deleteAnalysis(analysisId: string) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
+    const { userId } = await auth();
+    if (!userId) {
       return { success: false, error: "Non authentifié" };
     }
 
@@ -289,7 +358,7 @@ export async function deleteAnalysis(analysisId: string) {
       return { success: false, error: "Analyse non trouvée" };
     }
 
-    if (analysis.userId !== user.id) {
+    if (analysis.userId !== userId) {
       return { success: false, error: "Accès non autorisé" };
     }
 

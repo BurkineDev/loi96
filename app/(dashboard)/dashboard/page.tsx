@@ -1,8 +1,9 @@
 import { Metadata } from "next";
-import { getCurrentUser } from "@/app/actions/auth";
+import { getUserStats } from "@/app/actions/user";
 import { DocumentUploader } from "@/components/dashboard/document-uploader";
 import { QuickStats } from "@/components/dashboard/quick-stats";
 import { RecentAnalyses } from "@/components/dashboard/recent-analyses";
+import { UpgradeCard } from "@/components/dashboard/upgrade-card";
 
 export const metadata: Metadata = {
   title: "Tableau de bord",
@@ -14,16 +15,20 @@ export const metadata: Metadata = {
  * Permet d'uploader des documents et de voir les analyses récentes
  */
 export default async function DashboardPage() {
-  const user = await getCurrentUser();
+  const stats = await getUserStats();
 
-  if (!user) return null;
+  if (!stats) return null;
+
+  const { user, subscriptionInfo, totalAnalyses, avgComplianceScore, recentAnalyses } = stats;
+  const userName = user.firstName || user.email.split("@")[0];
+  const isPaidUser = user.plan !== "FREE";
 
   return (
     <div className="space-y-8">
       {/* En-tête */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">
-          Bonjour{user.name ? `, ${user.name.split(" ")[0]}` : ""} 👋
+          Bonjour, {userName}!
         </h1>
         <p className="text-muted-foreground mt-2">
           Vérifiez la conformité de vos documents à la Loi 96.
@@ -32,18 +37,31 @@ export default async function DashboardPage() {
 
       {/* Stats rapides */}
       <QuickStats
-        isSubscribed={user.isSubscribed}
-        freeChecksRemaining={user.freeChecksRemaining}
+        checksUsed={subscriptionInfo?.checksUsed || 0}
+        checksLimit={subscriptionInfo?.checksLimit || 5}
+        checksRemaining={subscriptionInfo?.checksRemaining || 0}
+        totalAnalyses={totalAnalyses}
+        avgScore={avgComplianceScore}
+        plan={user.plan}
       />
 
       {/* Zone d'upload */}
       <DocumentUploader
-        isSubscribed={user.isSubscribed}
-        freeChecksRemaining={user.freeChecksRemaining}
+        canAnalyze={subscriptionInfo?.canAnalyze || false}
+        checksRemaining={subscriptionInfo?.checksRemaining || 0}
+        isPaidUser={isPaidUser}
       />
 
+      {/* Carte upgrade pour utilisateurs gratuits */}
+      {!isPaidUser && (
+        <UpgradeCard
+          checksUsed={subscriptionInfo?.checksUsed || 0}
+          checksLimit={5}
+        />
+      )}
+
       {/* Analyses récentes */}
-      <RecentAnalyses />
+      <RecentAnalyses analyses={recentAnalyses} />
     </div>
   );
 }

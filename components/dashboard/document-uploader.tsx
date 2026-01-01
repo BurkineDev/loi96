@@ -3,6 +3,8 @@
 import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { toast } from "sonner";
 import {
   Upload,
   FileText,
@@ -10,6 +12,7 @@ import {
   Loader2,
   AlertCircle,
   ClipboardPaste,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,12 +26,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/components/ui/use-toast";
 import { analyzeDocument } from "@/app/actions/analyze";
 
 interface DocumentUploaderProps {
-  isSubscribed: boolean;
-  freeChecksRemaining: number;
+  canAnalyze: boolean;
+  checksRemaining: number;
+  isPaidUser: boolean;
 }
 
 // Types de fichiers acceptés
@@ -48,24 +51,21 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
  * Permet l'upload de fichiers ou le copier-coller de texte
  */
 export function DocumentUploader({
-  isSubscribed,
-  freeChecksRemaining,
+  canAnalyze,
+  checksRemaining,
+  isPaidUser,
 }: DocumentUploaderProps) {
-  // Calculate if user can analyze
-  const canAnalyze = isSubscribed || freeChecksRemaining > 0;
-  
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState("");
   const [documentName, setDocumentName] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [activeTab, setActiveTab] = useState("upload");
-  const { toast } = useToast();
   const router = useRouter();
 
   // Configuration de react-dropzone
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      const selectedFile = acceptedFiles[0];
+    const selectedFile = acceptedFiles[0];
+    if (selectedFile) {
       setFile(selectedFile);
       // Utiliser le nom du fichier sans l'extension comme nom par défaut
       setDocumentName(selectedFile.name.replace(/\.[^/.]+$/, ""));
@@ -90,11 +90,9 @@ export function DocumentUploader({
   // Soumettre pour analyse
   const handleSubmit = async () => {
     if (!canAnalyze) {
-      toast({
-        title: "Limite atteinte",
+      toast.error("Limite atteinte", {
         description:
-          "Vous avez atteint votre limite mensuelle. Passez au forfait Pro pour des analyses illimitées.",
-        variant: "destructive",
+          "Vous avez atteint votre limite mensuelle. Passez à Starter pour des analyses illimitées.",
       });
       return;
     }
@@ -103,22 +101,18 @@ export function DocumentUploader({
       activeTab === "upload" ? file !== null : text.trim().length >= 10;
 
     if (!hasContent) {
-      toast({
-        title: "Contenu requis",
+      toast.error("Contenu requis", {
         description:
           activeTab === "upload"
             ? "Veuillez sélectionner un fichier"
             : "Veuillez entrer au moins 10 caractères de texte",
-        variant: "destructive",
       });
       return;
     }
 
     if (!documentName.trim()) {
-      toast({
-        title: "Nom requis",
+      toast.error("Nom requis", {
         description: "Veuillez donner un nom à votre document",
-        variant: "destructive",
       });
       return;
     }
@@ -141,8 +135,7 @@ export function DocumentUploader({
       const result = await analyzeDocument(formData);
 
       if (result.success && result.analysisId) {
-        toast({
-          title: "Analyse terminée",
+        toast.success("Analyse terminée!", {
           description: "Votre document a été analysé avec succès.",
         });
         // Rediriger vers les résultats
@@ -152,13 +145,11 @@ export function DocumentUploader({
       }
     } catch (error) {
       console.error("Erreur d'analyse:", error);
-      toast({
-        title: "Erreur",
+      toast.error("Erreur", {
         description:
           error instanceof Error
             ? error.message
             : "Impossible d'analyser le document",
-        variant: "destructive",
       });
     } finally {
       setIsAnalyzing(false);
@@ -168,19 +159,31 @@ export function DocumentUploader({
   // Message d'erreur pour les fichiers rejetés
   const fileRejectionMessage =
     fileRejections.length > 0
-      ? fileRejections[0].errors[0].code === "file-too-large"
+      ? fileRejections[0]?.errors[0]?.code === "file-too-large"
         ? "Le fichier est trop volumineux (max 10 Mo)"
         : "Type de fichier non supporté"
       : null;
 
   return (
-    <Card>
+    <Card className="border-2 border-dashed border-muted-foreground/20 hover:border-quebec-blue/40 transition-colors">
       <CardHeader>
-        <CardTitle>Analyser un document</CardTitle>
-        <CardDescription>
-          Uploadez un fichier ou collez du texte pour vérifier la conformité à
-          la Loi 96
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-quebec-blue" />
+              Analyser un document
+            </CardTitle>
+            <CardDescription>
+              Uploadez un fichier ou collez du texte pour vérifier la conformité à
+              la Loi 96
+            </CardDescription>
+          </div>
+          {!isPaidUser && checksRemaining > 0 && (
+            <div className="text-sm text-muted-foreground bg-muted px-3 py-1 rounded-full">
+              {checksRemaining} vérification{checksRemaining > 1 ? "s" : ""} restante{checksRemaining > 1 ? "s" : ""}
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -200,14 +203,16 @@ export function DocumentUploader({
             {!canAnalyze ? (
               <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg bg-muted/50">
                 <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground text-center">
-                  Vous avez utilisé vos {5 - freeChecksRemaining} vérifications
-                  gratuites ce mois-ci.
+                <p className="text-muted-foreground text-center mb-2">
+                  Vous avez utilisé vos 5 vérifications gratuites ce mois-ci.
                 </p>
-                <Button className="mt-4" asChild>
-                  <a href="/dashboard/settings#billing">
-                    Passer au forfait Pro
-                  </a>
+                <p className="text-sm text-muted-foreground text-center mb-4">
+                  Passez à Starter pour des analyses illimitées!
+                </p>
+                <Button asChild className="bg-quebec-blue hover:bg-quebec-blue/90">
+                  <Link href="/tarifs">
+                    Voir les forfaits
+                  </Link>
                 </Button>
               </div>
             ) : file ? (
@@ -215,7 +220,7 @@ export function DocumentUploader({
                 {/* Fichier sélectionné */}
                 <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
                   <div className="flex items-center space-x-3">
-                    <FileText className="h-8 w-8 text-primary" />
+                    <FileText className="h-8 w-8 text-quebec-blue" />
                     <div>
                       <p className="font-medium">{file.name}</p>
                       <p className="text-sm text-muted-foreground">
@@ -253,15 +258,15 @@ export function DocumentUploader({
                   transition-colors cursor-pointer
                   ${
                     isDragActive
-                      ? "border-primary bg-primary/5"
-                      : "border-muted-foreground/25 hover:border-primary/50"
+                      ? "border-quebec-blue bg-quebec-blue/5"
+                      : "border-muted-foreground/25 hover:border-quebec-blue/50 hover:bg-quebec-blue/5"
                   }
                 `}
               >
                 <input {...getInputProps()} />
                 <Upload className="h-12 w-12 text-muted-foreground mb-4" />
                 {isDragActive ? (
-                  <p className="text-primary font-medium">
+                  <p className="text-quebec-blue font-medium">
                     Déposez le fichier ici...
                   </p>
                 ) : (
@@ -293,14 +298,16 @@ export function DocumentUploader({
             {!canAnalyze ? (
               <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg bg-muted/50">
                 <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground text-center">
-                  Vous avez utilisé vos {5 - freeChecksRemaining} vérifications
-                  gratuites ce mois-ci.
+                <p className="text-muted-foreground text-center mb-2">
+                  Vous avez utilisé vos 5 vérifications gratuites ce mois-ci.
                 </p>
-                <Button className="mt-4" asChild>
-                  <a href="/dashboard/settings#billing">
-                    Passer au forfait Pro
-                  </a>
+                <p className="text-sm text-muted-foreground text-center mb-4">
+                  Passez à Starter pour des analyses illimitées!
+                </p>
+                <Button asChild className="bg-quebec-blue hover:bg-quebec-blue/90">
+                  <Link href="/tarifs">
+                    Voir les forfaits
+                  </Link>
                 </Button>
               </div>
             ) : (
@@ -348,6 +355,7 @@ export function DocumentUploader({
                 !documentName.trim()
               }
               size="lg"
+              className="bg-quebec-blue hover:bg-quebec-blue/90"
             >
               {isAnalyzing ? (
                 <>
@@ -356,7 +364,7 @@ export function DocumentUploader({
                 </>
               ) : (
                 <>
-                  <FileText className="mr-2 h-4 w-4" />
+                  <Sparkles className="mr-2 h-4 w-4" />
                   Analyser le document
                 </>
               )}

@@ -1,7 +1,7 @@
 // ===========================================
 // Schéma Prisma pour ConformLoi96
 // ===========================================
-// Base de données PostgreSQL via Prisma Accelerate
+// Base de données PostgreSQL via Supabase
 
 generator client {
   provider = "prisma-client-js"
@@ -12,43 +12,61 @@ datasource db {
 }
 
 // ===========================================
-// Modèle Utilisateur
+// Modèle Utilisateur (synchronisé avec Clerk)
 // ===========================================
 model User {
-  id            String    @id @default(cuid())
+  id            String    @id // Clerk User ID (user_xxx)
   email         String    @unique
-  name          String?
-  avatarUrl     String?
-  
-  // Abonnement Lemon Squeezy
-  plan                      Plan      @default(FREE)
-  lemonSqueezyCustomerId    String?   @unique
-  lemonSqueezySubscriptionId String?  @unique
-  subscriptionStatus        String?   // active, cancelled, past_due, etc.
-  currentPeriodEnd          DateTime?
-  
-  // Compteurs (free checks par mois)
-  freeChecksUsed      Int      @default(0)
-  freeChecksResetAt   DateTime @default(now())
-  
+  firstName     String?
+  lastName      String?
+  imageUrl      String?
+
+  // Abonnement Stripe (ou Paddle en fallback)
+  plan                    Plan      @default(FREE)
+  stripeCustomerId        String?   @unique  // cus_xxx
+  stripeSubscriptionId    String?   @unique  // sub_xxx
+  paddleCustomerId        String?   @unique  // ctm_xxx (legacy)
+  paddleSubscriptionId    String?   @unique  // sub_xxx (legacy)
+  subscriptionStatus      SubscriptionStatus @default(FREE)
+  currentPeriodStart      DateTime?
+  currentPeriodEnd        DateTime?
+  trialEndsAt             DateTime? // Fin de la période d'essai 14 jours
+
+  // Compteurs (5 checks gratuits par mois)
+  checksUsed          Int      @default(0)
+  checksResetDate     DateTime @default(now()) // Date de reset des checks mensuels
+
   // Relations
   documents     Document[]
   analyses      Analysis[]
-  
+
   // Timestamps
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  
+
   @@index([email])
-  @@index([lemonSqueezyCustomerId])
+  @@index([paddleCustomerId])
 }
 
 // ===========================================
 // Plans d'abonnement
 // ===========================================
 enum Plan {
-  FREE
-  PRO
+  FREE      // 5 vérifications/mois gratuites
+  STARTER   // 19$/mois - vérifications illimitées
+  PRO       // 49$/mois - illimité + support prioritaire + exports avancés
+}
+
+// ===========================================
+// Statut d'abonnement
+// ===========================================
+enum SubscriptionStatus {
+  FREE        // Plan gratuit
+  TRIALING    // Période d'essai 14 jours
+  ACTIVE      // Abonnement actif
+  PAST_DUE    // Paiement en retard
+  PAUSED      // Abonnement en pause
+  CANCELED    // Abonnement annulé
 }
 
 // ===========================================
@@ -136,17 +154,38 @@ model Analysis {
 }
 
 // ===========================================
-// Modèle pour les webhooks Lemon Squeezy
+// Modèle pour les webhooks Paddle
 // ===========================================
 model WebhookEvent {
   id            String    @id @default(cuid())
-  eventId       String    @unique
-  eventType     String
-  data          Json
+  eventId       String    @unique  // Paddle event ID
+  eventType     String              // subscription.created, subscription.updated, etc.
+  data          Json                // Payload complet du webhook
   processed     Boolean   @default(false)
-  
+  processedAt   DateTime?
+  error         String?   @db.Text  // Erreur de traitement si applicable
+
   createdAt     DateTime  @default(now())
-  
+
   @@index([eventId])
+  @@index([eventType])
   @@index([processed])
+}
+
+// ===========================================
+// Audit des analyses (rate limiting)
+// ===========================================
+model AnalysisAudit {
+  id            String    @id @default(cuid())
+  userId        String
+  ipAddress     String?
+  userAgent     String?
+  success       Boolean
+  errorMessage  String?
+
+  createdAt     DateTime  @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([ipAddress])
 }

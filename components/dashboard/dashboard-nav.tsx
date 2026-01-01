@@ -8,6 +8,7 @@ import {
   Settings,
   Plus,
   LayoutDashboard,
+  Store,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,11 @@ export function DashboardNav() {
       title: "Tableau de bord",
       href: "/dashboard",
       icon: LayoutDashboard,
+    },
+    {
+      title: "Enseignes",
+      href: "/dashboard/signage",
+      icon: Store,
     },
     {
       title: "Historique",

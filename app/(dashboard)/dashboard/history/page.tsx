@@ -199,7 +199,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           </div>
 
           {/* Pagination */}
-          {result.totalPages > 1 && (
+          {(result.totalPages ?? 0) > 1 && (
             <div className="flex items-center justify-center gap-2 pt-4">
               <Button
                 variant="outline"
@@ -217,16 +217,16 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
               </Button>
               
               <span className="px-4 text-sm text-muted-foreground">
-                Page {page} sur {result.totalPages}
+                Page {page} sur {result.totalPages ?? 1}
               </span>
-              
+
               <Button
                 variant="outline"
                 size="sm"
-                disabled={page >= result.totalPages}
-                asChild={page < result.totalPages}
+                disabled={page >= (result.totalPages ?? 1)}
+                asChild={page < (result.totalPages ?? 1)}
               >
-                {page < result.totalPages ? (
+                {page < (result.totalPages ?? 1) ? (
                   <Link href={`/dashboard/history?page=${page + 1}`}>
                     Suivant
                   </Link>

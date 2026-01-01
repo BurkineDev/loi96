@@ -1,49 +1,35 @@
 // ===========================================
 // Client Prisma singleton pour Next.js
 // ===========================================
-// Évite les connexions multiples en développement
 
 import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-export const prisma =
-  globalForPrisma.prisma ??
-  (() => {
-    const databaseUrl = process.env.DATABASE_URL;
+function createPrismaClient(): PrismaClient {
+  const databaseUrl = process.env.DATABASE_URL;
 
-    if (!databaseUrl) {
-      throw new Error("DATABASE_URL is not set");
-    }
+  // During build time, DATABASE_URL might not be available
+  // Return a dummy client that will be replaced at runtime
+  if (!databaseUrl) {
+    console.warn("DATABASE_URL not set - using placeholder for build");
+    return new PrismaClient();
+  }
 
-    const logLevels =
-      process.env.NODE_ENV === "development"
-        ? ["query", "error", "warn"]
-        : ["error"];
+  const pool = new Pool({ connectionString: databaseUrl });
+  const adapter = new PrismaPg(pool);
 
-    const isAccelerateUrl =
-      databaseUrl.startsWith("prisma://") ||
-      databaseUrl.startsWith("prisma+");
+  return new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+  });
+}
 
-    if (isAccelerateUrl) {
-      return new PrismaClient({
-        accelerateUrl: databaseUrl,
-        log: logLevels,
-      });
-    }
-
-    const pool = new Pool({ connectionString: databaseUrl });
-    const adapter = new PrismaPg(pool);
-
-    return new PrismaClient({
-      adapter,
-      log: logLevels,
-    });
-  })();
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;

@@ -1,5 +1,7 @@
+"use server";
+
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
@@ -9,11 +11,10 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
  */
 export async function POST(request: NextRequest) {
   try {
-    // Vérifier l'authentification
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    // Vérifier l'authentification avec Clerk
+    const { userId } = await auth();
 
-    if (!user) {
+    if (!userId) {
       return NextResponse.json(
         { error: "Non authentifié" },
         { status: 401 }
@@ -28,6 +29,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "ID d'analyse manquant" },
         { status: 400 }
+      );
+    }
+
+    // Récupérer l'utilisateur depuis la base de données
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!dbUser) {
+      return NextResponse.json(
+        { error: "Utilisateur non trouvé" },
+        { status: 404 }
       );
     }
 
@@ -48,23 +61,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Vérifier que l'utilisateur est le propriétaire
-    if (analysis.userId !== user.id) {
+    if (analysis.userId !== dbUser.id) {
       return NextResponse.json(
         { error: "Accès non autorisé" },
         { status: 403 }
       );
     }
 
-    // Vérifier que l'utilisateur est abonné Pro ou a un texte corrigé
-    const dbUser = await prisma.user.findUnique({
-      where: { id: user.id },
-    });
+    // Vérifier que l'utilisateur est abonné Pro
+    const isPaidUser =
+      dbUser.plan !== "FREE" &&
+      (dbUser.subscriptionStatus === "ACTIVE" ||
+        dbUser.subscriptionStatus === "TRIALING");
 
-    const isSubscribed =
-      dbUser?.stripeCurrentPeriodEnd &&
-      new Date(dbUser.stripeCurrentPeriodEnd) > new Date();
-
-    if (!isSubscribed) {
+    if (!isPaidUser) {
       return NextResponse.json(
         { error: "La génération PDF est réservée aux abonnés Pro" },
         { status: 403 }
@@ -84,7 +94,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Retourner le PDF
-    return new NextResponse(pdfBytes, {
+    return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
@@ -117,7 +127,7 @@ async function generatePdf(params: PdfGenerationParams): Promise<Uint8Array> {
 
   // Créer un nouveau document PDF
   const pdfDoc = await PDFDocument.create();
-  
+
   // Charger les polices
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -167,7 +177,7 @@ async function generatePdf(params: PdfGenerationParams): Promise<Uint8Array> {
     // En-tête (première page seulement)
     if (pageNum === 0) {
       // Titre
-      page.drawText("ConformLoi96", {
+      page.drawText("Loi96.ca", {
         x: margin,
         y,
         size: 24,
@@ -253,13 +263,16 @@ async function generatePdf(params: PdfGenerationParams): Promise<Uint8Array> {
     const endLine = Math.min(startLine + linesPerPage, lines.length);
 
     for (let i = startLine; i < endLine; i++) {
-      page.drawText(lines[i], {
-        x: margin,
-        y,
-        size: fontSize,
-        font: helvetica,
-        color: rgb(0, 0, 0),
-      });
+      const line = lines[i];
+      if (line) {
+        page.drawText(line, {
+          x: margin,
+          y,
+          size: fontSize,
+          font: helvetica,
+          color: rgb(0, 0, 0),
+        });
+      }
       y -= lineHeight;
     }
 
@@ -273,7 +286,7 @@ async function generatePdf(params: PdfGenerationParams): Promise<Uint8Array> {
       color: grayColor,
     });
 
-    page.drawText("Généré par ConformLoi96", {
+    page.drawText("Généré par Loi96.ca", {
       x: margin,
       y: footerY,
       size: 9,
