@@ -5,7 +5,6 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "sonner";
-import { PaddleProvider } from "@/components/paddle/paddle-provider";
 import "./globals.css";
 
 // ===========================================
@@ -202,21 +201,19 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <body className="min-h-screen bg-background font-sans antialiased">
-          <PaddleProvider>
-            {/* Contenu principal */}
-            {children}
+          {/* Contenu principal */}
+          {children}
 
-            {/* Système de notifications toast */}
-            <Toaster />
-            <SonnerToaster
-              position="top-right"
-              richColors
-              closeButton
-              toastOptions={{
-                duration: 4000,
-              }}
-            />
-          </PaddleProvider>
+          {/* Système de notifications toast */}
+          <Toaster />
+          <SonnerToaster
+            position="top-right"
+            richColors
+            closeButton
+            toastOptions={{
+              duration: 4000,
+            }}
+          />
         </body>
       </html>
     </ClerkProvider>

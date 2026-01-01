@@ -6,6 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { analyzeTextForLoi96 } from "@/lib/ai/analyzer";
 import { extractTextFromFile, getMimeTypeFromExtension } from "@/lib/utils/file-parser";
 import { canPerformAnalysis, incrementChecksUsed } from "./user";
+import { rateLimiters } from "@/lib/security/rate-limit";
+import { validateUploadedFile } from "@/lib/security/file-validator";
+import { sanitizeForAI, logSuspiciousActivity } from "@/lib/security/prompt-sanitizer";
 
 // Security constants
 const MAX_TEXT_LENGTH = 500000; // 500K characters max
@@ -21,6 +24,15 @@ export async function analyzeDocument(formData: FormData) {
     const { userId } = await auth();
     if (!userId) {
       return { success: false, error: "Non authentifié" };
+    }
+
+    // SECURITY: Rate limiting
+    const rateLimit = await rateLimiters.analyze(userId);
+    if (!rateLimit.success) {
+      return {
+        success: false,
+        error: "Trop de requêtes. Veuillez patienter 1 minute avant de réessayer.",
+      };
     }
 
     // Vérifier si l'utilisateur peut analyser
@@ -74,8 +86,18 @@ export async function analyzeDocument(formData: FormData) {
     // Extraire le texte selon le type
     if (type === "FILE" && file) {
       const mimeType = file.type || getMimeTypeFromExtension(file.name);
+
+      // SECURITY: Valider les magic bytes du fichier
+      const fileValidation = await validateUploadedFile(file, mimeType);
+      if (!fileValidation.valid) {
+        return {
+          success: false,
+          error: fileValidation.error || "Type de fichier invalide",
+        };
+      }
+
       extractedText = await extractTextFromFile(file, mimeType);
-      
+
       // Déterminer le type de document
       if (mimeType === "application/pdf") {
         documentType = "PDF";
@@ -109,6 +131,16 @@ export async function analyzeDocument(formData: FormData) {
     if (extractedText.length > MAX_TEXT_LENGTH) {
       extractedText = extractedText.substring(0, MAX_TEXT_LENGTH);
       console.warn(`Text truncated to ${MAX_TEXT_LENGTH} characters for user ${userId}`);
+    }
+
+    // SECURITY: Détecter et logger les tentatives de prompt injection
+    const sanitization = sanitizeForAI(extractedText);
+    if (sanitization.riskLevel !== "low") {
+      logSuspiciousActivity(userId, "analyzeDocument", {
+        suspiciousPatterns: sanitization.suspiciousPatterns,
+        riskLevel: sanitization.riskLevel,
+        textLength: extractedText.length,
+      });
     }
 
     const startTime = Date.now();
